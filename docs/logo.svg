@@ -1,10 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108" role="img" aria-labelledby="title desc" xmlns:xlink="http://www.w3.org/1999/xlink">
-  <title id="title">NX RomFS Extractor logo</title>
-  <desc id="desc">Cyan extraction arrow over a white RomFS tray on a dark navy circle.</desc>
-  <circle cx="54" cy="54" r="54" fill="#0F172A"/>
-  <g transform="translate(8.64 8.64) scale(.84)">
-    <path fill="#22D3EE" d="M50 24h8v21h10L54 60 40 45h10z"/>
-    <path fill="none" stroke="#F8FAFC" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M29 64h12l6 7h14l6-7h12v18H29z"/>
-    <path fill="#F8FAFC" d="M35 54h5v5h-5zM68 54h5v5h-5z"/>
-  </g>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_523_2)">
+<path d="M256 512C397.385 512 512 397.385 512 256C512 114.615 397.385 0 256 0C114.615 0 0 114.615 0 256C0 397.385 114.615 512 256 512Z" fill="#0F172A"/>
+<mask id="mask0_523_2" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+<path d="M256 512C397.385 512 512 397.385 512 256C512 114.615 397.385 0 256 0C114.615 0 0 114.615 0 256C0 397.385 114.615 512 256 512Z" fill="#0F172A"/>
+</mask>
+<g mask="url(#mask0_523_2)">
+<path d="M0 359.973C95 307.973 184 331.973 256 297.973C332 261.973 413 205.973 512 227.973V511.973H0V359.973Z" fill="#102A43"/>
+</g>
+<path d="M240.071 136.533H271.929V220.16H311.751L256 279.893L200.249 220.16H240.071V136.533Z" fill="#22D3EE"/>
+<path d="M156.444 295.822H204.231L228.124 323.698H283.876L307.769 295.822H355.556V367.502H156.444V295.822Z" stroke="#F8FAFC" stroke-width="19.9111" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M180.338 256H200.249V275.911H180.338V256ZM311.751 256H331.662V275.911H311.751V256Z" fill="#F8FAFC"/>
+</g>
+<defs>
+<clipPath id="clip0_523_2">
+<rect width="512" height="512" fill="white"/>
+</clipPath>
+</defs>
 </svg>
