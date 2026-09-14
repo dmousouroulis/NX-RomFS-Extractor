@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "io.github.dmousouroulis.nxromfsextractor"
     compileSdk = 36
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "io.github.dmousouroulis.nxromfsextractor"
@@ -37,6 +38,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
 }
