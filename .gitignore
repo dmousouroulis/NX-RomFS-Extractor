@@ -7,3 +7,5 @@ app/build/
 .externalNativeBuild/
 .cxx/
 app/src/main/jni/
+*.jks
+*.keystore
