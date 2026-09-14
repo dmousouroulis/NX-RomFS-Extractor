@@ -1,12 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">NX RomFS Extractor</title>
-  <desc id="desc">Cyan downward arrow above a white extraction tray on a dark background.</desc>
-  <rect width="512" height="512" rx="112" fill="#0B1220"/>
-  <path d="M0 360C95 308 184 332 256 298c76-36 157-92 256-70v284H0z" fill="#102A43"/>
-  <g transform="translate(0 4)">
-    <path d="M237 100h38v101h48l-67 73-67-73h48z" fill="#22D3EE"/>
-    <path d="M139 302h56l28 33h66l28-33h56v91H139z" fill="none" stroke="#F8FAFC" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="166" y="260" width="24" height="24" rx="3" fill="#F8FAFC"/>
-    <rect x="322" y="260" width="24" height="24" rx="3" fill="#F8FAFC"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108" role="img" aria-labelledby="title desc" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <title id="title">NX RomFS Extractor logo</title>
+  <desc id="desc">Cyan extraction arrow over a white RomFS tray on a dark navy circle.</desc>
+  <circle cx="54" cy="54" r="54" fill="#0F172A"/>
+  <g transform="translate(8.64 8.64) scale(.84)">
+    <path fill="#22D3EE" d="M50 24h8v21h10L54 60 40 45h10z"/>
+    <path fill="none" stroke="#F8FAFC" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M29 64h12l6 7h14l6-7h12v18H29z"/>
+    <path fill="#F8FAFC" d="M35 54h5v5h-5zM68 54h5v5h-5z"/>
   </g>
 </svg>
