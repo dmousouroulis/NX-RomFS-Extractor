@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NXRomFSExtractor" parent="Theme.AppCompat.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/nx_primary</item>
+        <item name="colorPrimaryDark">@color/nx_primary_dark</item>
+        <item name="colorAccent">@color/nx_accent</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>
