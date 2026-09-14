@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">NX RomFS Extractor</title>
+  <desc id="desc">Cyan downward arrow above a white extraction tray on a dark background.</desc>
+  <rect width="512" height="512" rx="112" fill="#0B1220"/>
+  <path d="M0 360C95 308 184 332 256 298c76-36 157-92 256-70v284H0z" fill="#102A43"/>
+  <g transform="translate(0 4)">
+    <path d="M237 100h38v101h48l-67 73-67-73h48z" fill="#22D3EE"/>
+    <path d="M139 302h56l28 33h66l28-33h56v91H139z" fill="none" stroke="#F8FAFC" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="166" y="260" width="24" height="24" rx="3" fill="#F8FAFC"/>
+    <rect x="322" y="260" width="24" height="24" rx="3" fill="#F8FAFC"/>
+  </g>
+</svg>
