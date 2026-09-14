@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="nx_primary">#0B1220</color>
+    <color name="nx_primary_dark">#08101C</color>
+    <color name="nx_accent">#22D3EE</color>
+</resources>
