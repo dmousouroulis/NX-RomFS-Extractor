@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" width="132" alt="NX RomFS Extractor logo">
+</p>
+
 # NX RomFS Extractor
 
 NX RomFS Extractor is an Android utility for browsing reconstructed RomFS contents and extracting individual files directly to a folder on the device.
