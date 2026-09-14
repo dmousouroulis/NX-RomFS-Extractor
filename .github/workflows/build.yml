@@ -1,0 +1,91 @@
+name: Build NX RomFS Extractor
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Fetch pinned native sources
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          clone_at() {
+            local url="$1"
+            local sha="$2"
+            local dest="$3"
+            rm -rf "$dest"
+            git init -q "$dest"
+            git -C "$dest" remote add origin "$url"
+            git -C "$dest" fetch -q --depth 1 origin "$sha"
+            git -C "$dest" checkout -q --detach FETCH_HEAD
+          }
+
+          clone_at https://github.com/jakcron/nstool.git \
+            cfb826ca6c165fbcd816fd7949df88ef3d72a948 /tmp/nstool
+
+          rm -rf app/src/main/jni
+          mkdir -p app/src/main/jni/deps
+          cp -a /tmp/nstool/src/. app/src/main/jni/
+
+          clone_at https://github.com/jakcron/libmbedtls.git \
+            74346376dd035e9fbc161cdb80afc646b72fde86 app/src/main/jni/deps/libmbedtls
+          clone_at https://github.com/jakcron/libfmt.git \
+            b03b081e026ceb1226b45de926babe629d6c0688 app/src/main/jni/deps/libfmt
+          clone_at https://github.com/jakcron/libtoolchain.git \
+            578d170f5b294e4a9feb3cc2d504896e846f204e app/src/main/jni/deps/libtoolchain
+          clone_at https://github.com/jakcron/liblz4.git \
+            561775a11e00cbd21a45031c64068cb5e1242608 app/src/main/jni/deps/liblz4
+          clone_at https://github.com/jakcron/libpietendo.git \
+            5d50d02f8f3b8918bdfbbb599b8c4c1628660d89 app/src/main/jni/deps/libpietendo
+
+      - name: Enable stream-backed update reconstruction
+        run: python3 tools/patch_nca_stream.py
+
+      - name: Build APK
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Prepare artifact
+        run: cp app/build/outputs/apk/debug/app-debug.apk NX-RomFS-Extractor-v0.1.0.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NX-RomFS-Extractor-v0.1.0
+          path: NX-RomFS-Extractor-v0.1.0.apk
+          if-no-files-found: error
