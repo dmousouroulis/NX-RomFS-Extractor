@@ -59,8 +59,8 @@ GitHub Actions builds the APK automatically. A local build requires Android SDK/
 
 NX RomFS Extractor uses work from:
 
-- **nxinfo** by **jayl-dev** — Android file-selection and integration foundation.
-- **NSTool** by **jakcron** — native package, NCA, filesystem, and RomFS parsing foundation.
+- [**nxinfo**](https://github.com/jayl-dev/nxinfo) by **jayl-dev** — Android file-selection and integration foundation.
+- [**NSTool**](https://github.com/jakcron/nstool) by **jakcron** — native package, NCA, filesystem, and RomFS parsing foundation.
 - Supporting libraries maintained by jakcron, including `libmbedtls`, `libfmt`, `libtoolchain`, `liblz4`, and `libpietendo`.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for attribution and license information.
