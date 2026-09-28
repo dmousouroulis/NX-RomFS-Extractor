@@ -249,11 +249,15 @@ int64_t extractFromUpdated(const ProgramNcaInfo& baseProgram,
                            const std::string& requestedPath,
                            int outputFd,
                            std::string& foundPath) {
+    std::string lastError;
+    bool sawProgramCandidate = false;
+
     for (const auto& path : listNcas(updateFs)) {
         try {
             std::shared_ptr<tc::io::IStream> updateNcaStream;
             updateFs->openFile(tc::io::Path(path), tc::io::FileMode::Open, tc::io::FileAccess::Read, updateNcaStream);
             baseProgram.stream->seek(0, tc::io::SeekOrigin::Begin);
+
             nstool::NcaProcess nca;
             nca.setInputFile(updateNcaStream);
             nca.setBaseNcaStream(baseProgram.stream);
@@ -261,15 +265,31 @@ int64_t extractFromUpdated(const ProgramNcaInfo& baseProgram,
             nca.setVerifyMode(false);
             nca.setCliOutputMode(nstool::CliOutputMode(false, false, false, false));
             nca.process();
+
             const auto& header = nca.getHeader();
-            if (header.getContentType() != pie::hac::nca::ContentType_Program ||
-                header.getProgramId() != baseProgram.programId) continue;
+            if (header.getContentType() != pie::hac::nca::ContentType_Program) continue;
+
+            // Do not require the update Program ID to equal the base Program ID.
+            // Valid update Program NCAs may use an update-specific ID. Successful
+            // reconstruction with the base stream is the authoritative compatibility check.
+            sawProgramCandidate = true;
             std::shared_ptr<tc::io::IStream> target;
             if (!openRequestedFile(nca.getFileSystem(), requestedPath, target, foundPath)) continue;
             return copyToFd(target, outputFd);
-        } catch (...) {}
+        } catch (const std::exception& e) {
+            lastError = e.what();
+        } catch (...) {
+            lastError = "unknown native error";
+        }
     }
-    throw tc::Exception("A matching updated Program NCA was not found, or the requested RomFS file does not exist in it");
+
+    if (sawProgramCandidate) {
+        throw tc::Exception("The updated RomFS opened, but the requested file was not found");
+    }
+    if (!lastError.empty()) {
+        throw tc::Exception("Could not reconstruct the updated RomFS: " + lastError);
+    }
+    throw tc::Exception("Could not find a usable updated Program NCA. Check that the base and update packages belong together and are selected in the correct order");
 }
 
 bool isNsp(const std::string& name) {
@@ -300,8 +320,8 @@ Java_io_github_dmousouroulis_nxromfsextractor_RomFsExtractorActivity_extractRomF
 
     try {
         if (keyPath.empty()) throw tc::Exception("prod.keys path is empty");
-        if (!isNsp(baseName)) throw tc::Exception("v0.1 currently supports NSP base packages only");
-        if (updateFd >= 0 && !isNsp(updateName)) throw tc::Exception("v0.1 currently supports NSP update packages only");
+        if (!isNsp(baseName)) throw tc::Exception("This build currently supports NSP base packages only");
+        if (updateFd >= 0 && !isNsp(updateName)) throw tc::Exception("This build currently supports NSP update packages only");
         normalizeRomFsPath(requestedPath);
 
         nstool::KeyBag keys = nstool::KeyBagInitializer(
@@ -315,7 +335,7 @@ Java_io_github_dmousouroulis_nxromfsextractor_RomFsExtractorActivity_extractRomF
         auto baseFs = openNsp(baseRoot);
         importTickets(baseFs, keys);
         auto baseProgram = findBaseProgramNca(baseFs, keys);
-        if (!baseProgram.stream) throw tc::Exception("Could not find a Program NCA in the base NSP");
+        if (!baseProgram.stream) throw tc::Exception("Could not find a Program NCA in the base package");
 
         std::string foundPath;
         int64_t bytes = 0;
