@@ -252,11 +252,15 @@ std::vector<std::string> indexBaseRomFs(const ProgramNcaInfo& baseProgram,
 std::vector<std::string> indexUpdatedRomFs(const ProgramNcaInfo& baseProgram,
                                           const std::shared_ptr<tc::io::IFileSystem>& updateFs,
                                           const nstool::KeyBag& keys) {
+    std::string lastError;
+    bool sawProgramCandidate = false;
+
     for (const auto& path : listNcas(updateFs)) {
         try {
             std::shared_ptr<tc::io::IStream> updateNcaStream;
             updateFs->openFile(tc::io::Path(path), tc::io::FileMode::Open, tc::io::FileAccess::Read, updateNcaStream);
             baseProgram.stream->seek(0, tc::io::SeekOrigin::Begin);
+
             nstool::NcaProcess nca;
             nca.setInputFile(updateNcaStream);
             nca.setBaseNcaStream(baseProgram.stream);
@@ -264,14 +268,30 @@ std::vector<std::string> indexUpdatedRomFs(const ProgramNcaInfo& baseProgram,
             nca.setVerifyMode(false);
             nca.setCliOutputMode(nstool::CliOutputMode(false, false, false, false));
             nca.process();
+
             const auto& header = nca.getHeader();
-            if (header.getContentType() != pie::hac::nca::ContentType_Program ||
-                header.getProgramId() != baseProgram.programId) continue;
+            if (header.getContentType() != pie::hac::nca::ContentType_Program) continue;
+
+            // Update Program NCAs commonly use a different Program ID from the base
+            // package (for example an update offset). If reconstruction succeeded,
+            // the base/update relationship has already been validated by NSTool.
+            sawProgramCandidate = true;
             auto files = buildLogicalRomFsIndex(nca.getFileSystem());
             if (!files.empty()) return files;
-        } catch (...) {}
+        } catch (const std::exception& e) {
+            lastError = e.what();
+        } catch (...) {
+            lastError = "unknown native error";
+        }
     }
-    throw tc::Exception("Could not build the updated RomFS file list");
+
+    if (sawProgramCandidate) {
+        throw tc::Exception("The updated Program NCA opened, but no RomFS files were found");
+    }
+    if (!lastError.empty()) {
+        throw tc::Exception("Could not reconstruct the updated RomFS: " + lastError);
+    }
+    throw tc::Exception("Could not find a usable updated Program NCA. Check that the base and update packages belong together and are selected in the correct order");
 }
 
 } // namespace
@@ -291,8 +311,8 @@ Java_io_github_dmousouroulis_nxromfsextractor_RomFsExtractorActivity_listRomFsFi
 
     try {
         if (keyPath.empty()) throw tc::Exception("prod.keys path is empty");
-        if (!isNsp(baseName)) throw tc::Exception("v0.1 currently supports NSP base packages only");
-        if (updateFd >= 0 && !isNsp(updateName)) throw tc::Exception("v0.1 currently supports NSP update packages only");
+        if (!isNsp(baseName)) throw tc::Exception("This build currently supports NSP base packages only");
+        if (updateFd >= 0 && !isNsp(updateName)) throw tc::Exception("This build currently supports NSP update packages only");
 
         nstool::KeyBag keys = nstool::KeyBagInitializer(
             false,
@@ -305,7 +325,7 @@ Java_io_github_dmousouroulis_nxromfsextractor_RomFsExtractorActivity_listRomFsFi
         auto baseFs = openNsp(baseRoot);
         importTickets(baseFs, keys);
         auto baseProgram = findBaseProgramNca(baseFs, keys);
-        if (!baseProgram.stream) throw tc::Exception("Could not find a Program NCA in the base NSP");
+        if (!baseProgram.stream) throw tc::Exception("Could not find a Program NCA in the base package");
 
         std::vector<std::string> files;
         if (updateFd >= 0) {
