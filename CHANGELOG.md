@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.2
+## 0.1.2 (test candidate)
 
 - Fixed the Android bridge so the reconstructed NCA filesystem is retained and can actually be browsed.
 - Added NSP and XCI container support for base and optional update packages.
