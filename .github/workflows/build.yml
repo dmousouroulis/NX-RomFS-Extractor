@@ -154,11 +154,21 @@ jobs:
           set -euo pipefail
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
-          cat > "$NOTES_FILE" <<EOF
-          Android utility for browsing reconstructed RomFS contents and extracting individual files locally.
-
-          Download the attached APK to install v$VERSION.
-          EOF
+          {
+            echo "Android utility for browsing reconstructed RomFS contents, extracting individual files, and packaging modified replacements back into their remembered RomFS locations."
+            echo
+            echo "## What's new in v$VERSION"
+            echo
+            awk -v version="$VERSION" '
+              $0 == "## " version { capture=1; next }
+              capture && /^## / { exit }
+              capture { print }
+            ' CHANGELOG.md
+            echo
+            echo "See the README for the complete extract → back up → externally modify → package workflow."
+            echo
+            echo "Download the attached APK to install v$VERSION."
+          } > "$NOTES_FILE"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK" --clobber
