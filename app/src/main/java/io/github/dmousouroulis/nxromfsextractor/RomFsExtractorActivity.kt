@@ -20,6 +20,10 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class RomFsExtractorActivity : AppCompatActivity() {
 
@@ -27,6 +31,7 @@ class RomFsExtractorActivity : AppCompatActivity() {
     private var updateUri: Uri? = null
     private var selectedRomFsPath: String? = null
     private var outputFolderUri: Uri? = null
+    private var modifiedFileUri: Uri? = null
     private var cachedRomFsFiles: List<String> = emptyList()
 
     private lateinit var baseStatus: TextView
@@ -34,9 +39,12 @@ class RomFsExtractorActivity : AppCompatActivity() {
     private lateinit var keysStatus: TextView
     private lateinit var selectedFileStatus: TextView
     private lateinit var outputFolderStatus: TextView
+    private lateinit var modifiedFileStatus: TextView
     private lateinit var browseButton: Button
     private lateinit var outputFolderButton: Button
     private lateinit var extractButton: Button
+    private lateinit var modifiedFileButton: Button
+    private lateinit var exportOverrideButton: Button
     private lateinit var resultStatus: TextView
     private lateinit var progress: ProgressBar
 
@@ -80,6 +88,24 @@ class RomFsExtractorActivity : AppCompatActivity() {
                     .putString(PREF_OUTPUT_FOLDER, it.toString())
                     .apply()
                 outputFolderStatus.text = "Output folder: ${folderLabel(it)}"
+                updateControlState()
+            }
+        }
+
+    private val modifiedFilePicker =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                persistReadPermission(it)
+                modifiedFileUri = it
+                val originalPath = selectedRomFsPath
+                val originalName = originalPath?.let { path -> originalFileName(path) }
+                modifiedFileStatus.text = buildString {
+                    append("Modified replacement: ${displayName(it)}")
+                    if (!originalPath.isNullOrBlank() && !originalName.isNullOrBlank()) {
+                        append("\nPackage target: $originalPath")
+                        append("\nFilename inside package: $originalName")
+                    }
+                }
                 updateControlState()
             }
         }
@@ -196,7 +222,7 @@ class RomFsExtractorActivity : AppCompatActivity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Browse the reconstructed internal folders until you reach the file you want to extract. Example path: content/content0/bundles/xml.bundle"
+            text = "Browse the reconstructed internal folders until you reach the file you want to extract. Its original relative RomFS path is retained automatically for optional override packaging later."
             textSize = 13f
             alpha = 0.75f
             setPadding(0, 0, 0, dp(8))
@@ -250,7 +276,7 @@ class RomFsExtractorActivity : AppCompatActivity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Choose any writable subfolder in internal storage or on an SD card. Android may block protected folders or a storage root itself."
+            text = "Choose any writable subfolder in internal storage or on an SD card. Android may block protected folders or a storage root itself. The same folder is also used for an optional override ZIP."
             textSize = 13f
             alpha = 0.75f
             setPadding(0, 0, 0, dp(8))
@@ -284,7 +310,55 @@ class RomFsExtractorActivity : AppCompatActivity() {
         )
 
         content.addView(TextView(this).apply {
-            text = "Step 4 selects the source file inside RomFS. Step 5 selects where the extracted copy will be saved on Android. All processing is local to this device."
+            text = "7. Export Override Package (optional)"
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, dp(24), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "After modifying the extracted file externally, select that replacement here. The app will restore the original filename and rebuild the remembered RomFS hierarchy inside a ZIP."
+            textSize = 13f
+            alpha = 0.75f
+            setPadding(0, 0, 0, dp(8))
+        })
+
+        modifiedFileButton = Button(this).apply {
+            text = "SELECT MODIFIED REPLACEMENT FILE"
+            setOnClickListener { modifiedFilePicker.launch(arrayOf("*/*")) }
+        }
+        content.addView(
+            modifiedFileButton,
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        modifiedFileStatus = TextView(this).apply {
+            text = "Modified replacement: not selected"
+            setPadding(0, dp(6), 0, dp(12))
+            setTextIsSelectable(true)
+        }
+        content.addView(modifiedFileStatus)
+
+        exportOverrideButton = Button(this).apply {
+            text = "EXPORT OVERRIDE PACKAGE"
+            setOnClickListener { showOverrideExportOptions() }
+        }
+        content.addView(
+            exportOverrideButton,
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        content.addView(TextView(this).apply {
+            text = "Package options: romfs/… or Mods/romfs/…. The app only creates the ZIP; it does not install, enable, or configure the resulting override in other software. Keep a backup of the original or previously working file before replacing anything."
+            textSize = 13f
+            alpha = 0.75f
+            setPadding(0, dp(8), 0, 0)
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Step 4 selects the source file inside RomFS. Step 5 selects where extracted files and exported ZIPs are saved on Android. All processing is local to this device."
             textSize = 13f
             alpha = 0.75f
             setPadding(0, dp(24), 0, 0)
@@ -349,7 +423,11 @@ class RomFsExtractorActivity : AppCompatActivity() {
     private fun invalidateRomFsSelection() {
         cachedRomFsFiles = emptyList()
         selectedRomFsPath = null
+        modifiedFileUri = null
         if (::selectedFileStatus.isInitialized) selectedFileStatus.text = "Source file: none"
+        if (::modifiedFileStatus.isInitialized) {
+            modifiedFileStatus.text = "Modified replacement: not selected"
+        }
     }
 
     private fun updateControlState() {
@@ -362,6 +440,15 @@ class RomFsExtractorActivity : AppCompatActivity() {
             extractButton.isEnabled =
                 readyToBrowse &&
                     !selectedRomFsPath.isNullOrBlank() &&
+                    outputFolderUri != null
+        }
+        if (::modifiedFileButton.isInitialized) {
+            modifiedFileButton.isEnabled = !selectedRomFsPath.isNullOrBlank()
+        }
+        if (::exportOverrideButton.isInitialized) {
+            exportOverrideButton.isEnabled =
+                !selectedRomFsPath.isNullOrBlank() &&
+                    modifiedFileUri != null &&
                     outputFolderUri != null
         }
     }
@@ -575,10 +662,12 @@ class RomFsExtractorActivity : AppCompatActivity() {
                         val selected =
                             if (normalizedDir.isBlank()) entry.name
                             else "$normalizedDir/${entry.name}"
-                        selectedRomFsPath = selected
-                        selectedFileStatus.text = "Source file:\n$selected"
+                        selectedRomFsPath = normalizeRelativeRomFsPath(selected)
+                        modifiedFileUri = null
+                        selectedFileStatus.text = "Source file:\n$selectedRomFsPath"
+                        modifiedFileStatus.text = "Modified replacement: not selected"
                         resultStatus.text =
-                            "Source file selected. Choose an output folder, then extract."
+                            "Source file selected. Its original RomFS path is retained. Choose an output folder, then extract."
                         updateControlState()
                     }
                 }
@@ -603,6 +692,8 @@ class RomFsExtractorActivity : AppCompatActivity() {
         browseButton.isEnabled = false
         outputFolderButton.isEnabled = false
         extractButton.isEnabled = false
+        modifiedFileButton.isEnabled = false
+        exportOverrideButton.isEnabled = false
         resultStatus.text =
             "Creating ${suggestedOutputName(requestedPath)} in ${folderLabel(folderUri)}…"
 
@@ -613,7 +704,8 @@ class RomFsExtractorActivity : AppCompatActivity() {
                         val outputUri =
                             createOutputDocument(
                                 folderUri,
-                                suggestedOutputName(requestedPath)
+                                suggestedOutputName(requestedPath),
+                                "application/octet-stream"
                             ) ?: return@withContext Pair(
                                 "ERROR|Could not create the output file in the selected folder",
                                 null
@@ -677,7 +769,9 @@ class RomFsExtractorActivity : AppCompatActivity() {
                         append("\n")
                         append(sizeText)
                         append("\nSaved to: ${folderLabel(folderUri)} / ${suggestedOutputName(requestedPath)}")
-                        if (savedUri != null) append("\n\nThe extracted file is ready.")
+                        if (savedUri != null) {
+                            append("\n\nOriginal RomFS path retained for optional override packaging.")
+                        }
                     }
                 } else {
                     "Extraction failed:\n${result.removePrefix("ERROR|")}"
@@ -685,14 +779,130 @@ class RomFsExtractorActivity : AppCompatActivity() {
         }
     }
 
-    private fun createOutputDocument(folderUri: Uri, fileName: String): Uri? {
+    private fun showOverrideExportOptions() {
+        val originalPath = selectedRomFsPath ?: return
+        val replacement = modifiedFileUri ?: return
+        val folder = outputFolderUri ?: return
+        val originalName = originalFileName(originalPath)
+
+        AlertDialog.Builder(this)
+            .setTitle("Export Override Package")
+            .setMessage(
+                "The selected replacement '${displayName(replacement)}' will be stored inside the ZIP using the original filename '$originalName' and original RomFS path:\n\n$originalPath\n\nChoose a package structure."
+            )
+            .setItems(
+                arrayOf(
+                    "romfs/… — standard override structure",
+                    "Mods/romfs/… — wrapped mod-folder structure"
+                )
+            ) { _, which ->
+                runOverrideExport(folder, replacement, originalPath, wrapped = which == 1)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun runOverrideExport(
+        folderUri: Uri,
+        replacementUri: Uri,
+        originalPath: String,
+        wrapped: Boolean
+    ) {
+        val normalizedPath = normalizeRelativeRomFsPath(originalPath)
+        if (normalizedPath.isBlank()) {
+            resultStatus.text = "Could not export override package: original RomFS path is empty."
+            return
+        }
+
+        val entryPath =
+            if (wrapped) "Mods/romfs/$normalizedPath" else "romfs/$normalizedPath"
+        val zipName = overrideZipName(normalizedPath, wrapped)
+
+        progress.visibility = View.VISIBLE
+        browseButton.isEnabled = false
+        outputFolderButton.isEnabled = false
+        extractButton.isEnabled = false
+        modifiedFileButton.isEnabled = false
+        exportOverrideButton.isEnabled = false
+        resultStatus.text = "Creating $zipName…"
+
+        lifecycleScope.launch {
+            val exportResult =
+                withContext(Dispatchers.IO) {
+                    try {
+                        val zipUri =
+                            createOutputDocument(folderUri, zipName, "application/zip")
+                                ?: return@withContext OverrideResult.Error(
+                                    "Could not create the ZIP in the selected output folder"
+                                )
+
+                        val bytes =
+                            contentResolver.openInputStream(replacementUri)?.use { rawInput ->
+                                BufferedInputStream(rawInput).use { input ->
+                                    contentResolver.openOutputStream(zipUri, "w")?.use { rawOutput ->
+                                        ZipOutputStream(BufferedOutputStream(rawOutput)).use { zip ->
+                                            zip.putNextEntry(ZipEntry(entryPath))
+                                            val copied = input.copyTo(zip)
+                                            zip.closeEntry()
+                                            copied
+                                        }
+                                    } ?: throw IllegalStateException("Could not open ZIP output")
+                                }
+                            } ?: throw IllegalStateException("Could not open the modified replacement file")
+
+                        OverrideResult.Success(zipName, entryPath, bytes)
+                    } catch (t: Throwable) {
+                        OverrideResult.Error(
+                            "${t.javaClass.simpleName}: ${t.message ?: "unknown error"}"
+                        )
+                    }
+                }
+
+            progress.visibility = View.GONE
+            updateControlState()
+
+            when (exportResult) {
+                is OverrideResult.Success -> {
+                    resultStatus.text = buildString {
+                        append("Override ZIP created successfully.\n")
+                        append("ZIP: ${exportResult.zipName}\n")
+                        append("Contains: ${exportResult.entryPath}\n")
+                        append("Replacement size: ${formatBytes(exportResult.bytes)}\n")
+                        append("Saved to: ${folderLabel(folderUri)}")
+                    }
+                    AlertDialog.Builder(this@RomFsExtractorActivity)
+                        .setTitle("Override package created")
+                        .setMessage(
+                            "${exportResult.zipName}\n\nInside the ZIP:\n${exportResult.entryPath}\n\nThe original RomFS path and filename were restored automatically. This app does not install or enable the package in other software. Keep a backup of any previously working file before replacing it."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+
+                is OverrideResult.Error -> {
+                    resultStatus.text = "Override export failed:\n${exportResult.message}"
+                    AlertDialog.Builder(this@RomFsExtractorActivity)
+                        .setTitle("Could not export override package")
+                        .setMessage(exportResult.message)
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+        }
+    }
+
+    private fun createOutputDocument(
+        folderUri: Uri,
+        fileName: String,
+        mimeType: String
+    ): Uri? {
         val treeDocumentId = DocumentsContract.getTreeDocumentId(folderUri)
         val parentUri =
             DocumentsContract.buildDocumentUriUsingTree(folderUri, treeDocumentId)
         return DocumentsContract.createDocument(
             contentResolver,
             parentUri,
-            "application/octet-stream",
+            mimeType,
             fileName
         )
     }
@@ -717,9 +927,30 @@ class RomFsExtractorActivity : AppCompatActivity() {
         }
     }
 
-    private fun suggestedOutputName(path: String): String {
-        val normalized = path.trim().replace('\\', '/').trimEnd('/')
+    private fun normalizeRelativeRomFsPath(path: String): String {
+        val pieces =
+            path.trim()
+                .replace('\\', '/')
+                .trim('/')
+                .split('/')
+                .filter { it.isNotBlank() && it != "." && it != ".." }
+        return pieces.joinToString("/")
+    }
+
+    private fun originalFileName(path: String): String {
+        val normalized = normalizeRelativeRomFsPath(path)
         return normalized.substringAfterLast('/').ifBlank { "romfs_file.bin" }
+    }
+
+    private fun suggestedOutputName(path: String): String = originalFileName(path)
+
+    private fun overrideZipName(path: String, wrapped: Boolean): String {
+        val original = originalFileName(path)
+        val stem = original.substringBeforeLast('.', original)
+            .replace(Regex("[^A-Za-z0-9._-]+"), "-")
+            .trim('-')
+            .ifBlank { "romfs-file" }
+        return if (wrapped) "$stem-override-wrapped.zip" else "$stem-override.zip"
     }
 
     private fun formatBytes(bytes: Long): String {
@@ -788,6 +1019,16 @@ class RomFsExtractorActivity : AppCompatActivity() {
         keysFile: String,
         requestedPath: String
     ): String
+
+    private sealed class OverrideResult {
+        data class Success(
+            val zipName: String,
+            val entryPath: String,
+            val bytes: Long
+        ) : OverrideResult()
+
+        data class Error(val message: String) : OverrideResult()
+    }
 
     companion object {
         private const val PREFS = "nx_romfs_extractor"
