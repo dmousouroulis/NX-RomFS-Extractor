@@ -1,24 +1,24 @@
 # Changelog
 
-## 0.1.2 (test candidate)
+## 0.1.2
 
-- Fixed the Android bridge so the reconstructed NCA filesystem is retained and can actually be browsed.
+- Fixed the Android bridge so the reconstructed NCA filesystem is retained and can be browsed reliably.
 - Added NSP and XCI container support for base and optional update packages.
-- Added recursive container scanning for NCA and ticket files.
+- Added recursive container scanning for NCA and ticket files, including nested XCI layouts.
 - Added partition-level reconstruction diagnostics.
 - Added base/update Program ID compatibility handling for update-offset IDs.
-- Updated package-selection labels and guidance for NSP/XCI.
-- Kept output-folder selection on writable Android subfolders rather than defaulting to Download.
-- Retain the selected file's original relative RomFS path for the rest of the workflow.
-- Added optional **Package Modified File** workflow after external editing.
-- Modified replacement files are restored to the original filename automatically.
-- Override ZIPs now use one deterministic structure: `Mods/romfs/[original path]`.
-- Override ZIPs are saved to the same writable folder selected in Step 5.
-- The preferred ZIP filename is `NX_RomFS_Override.zip`; if it already exists, a non-conflicting numbered filename is generated.
-- The generated ZIP is reopened and validated before success is reported, including verification that the expected reconstructed entry exists.
-- ZIP creation failures now surface the actual error to the user.
-- Added explicit help text that generated packages are not automatically installed or enabled in other software and that users should keep backups of working files.
-- Set the Android app version to 0.1.2 / versionCode 3 for clean on-device upgrade testing.
+- Improved package-selection labels and guidance for NSP/XCI.
+- Kept output-folder selection on writable Android subfolders rather than assuming a specific protected or writable location.
+- Retained the selected file's original relative RomFS path for the rest of the workflow.
+- Kept normal single-file extraction unchanged.
+- Added **7. Package Modified File (optional)** with **SELECT MODIFIED FILE** and **CREATE OVERRIDE ZIP** actions.
+- Added deterministic override packaging at `Mods/romfs/[original path]` using the remembered source path and original filename.
+- Added automatic `NX_RomFS_Override.zip` naming with non-conflicting numbered filenames when needed.
+- Added post-write ZIP validation to confirm the generated archive can be reopened and contains the expected reconstructed entry.
+- Added clear success details showing the Android save location and packaged target, plus surfaced errors when ZIP creation fails.
+- Added explicit guidance that NX RomFS Extractor creates the package but does not install, enable, or configure it in third-party software.
+- Added backup guidance for the original or previously working file before external modification.
+- Set Android app version to 0.1.2 / versionCode 3.
 
 ## 0.1.1
 
