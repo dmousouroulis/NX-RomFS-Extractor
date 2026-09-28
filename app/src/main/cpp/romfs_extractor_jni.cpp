@@ -18,6 +18,7 @@
 #include <pietendo/hac/ContentArchiveHeader.h>
 
 #include "PfsProcess.h"
+#include "GameCardProcess.h"
 #include "NcaProcess.h"
 #include "EsTikProcess.h"
 #include "KeyBag.h"
@@ -40,6 +41,28 @@ std::string toUpperHex(uint64_t value) {
     char buf[17];
     std::snprintf(buf, sizeof(buf), "%016llX", static_cast<unsigned long long>(value));
     return std::string(buf);
+}
+
+std::string extensionLower(const std::string& name) {
+    const auto p = name.find_last_of('.');
+    if (p == std::string::npos || p + 1 >= name.size()) return {};
+    std::string ext = name.substr(p + 1);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext;
+}
+
+bool hasExtension(const std::string& name, const std::string& wanted) {
+    return extensionLower(name) == wanted;
+}
+
+bool isSupportedContainer(const std::string& name) {
+    const auto ext = extensionLower(name);
+    return ext == "nsp" || ext == "xci";
+}
+
+std::string joinPhysical(const std::string& parent, const std::string& name) {
+    if (parent.empty() || parent == "/") return "/" + name;
+    return parent + "/" + name;
 }
 
 class AndroidFdStream final : public tc::io::IStream {
@@ -100,28 +123,78 @@ private:
     int fd_;
 };
 
-std::shared_ptr<tc::io::IFileSystem> openNsp(const std::shared_ptr<tc::io::IStream>& stream) {
-    nstool::PfsProcess pfs;
-    pfs.setInputFile(stream);
-    pfs.setCliOutputMode(nstool::CliOutputMode(false, false, false, false));
-    pfs.process();
-    return pfs.getFileSystem();
+std::shared_ptr<tc::io::IFileSystem> openContainer(
+        const std::shared_ptr<tc::io::IStream>& stream,
+        const std::string& fileName,
+        const nstool::KeyBag& keys) {
+    const auto ext = extensionLower(fileName);
+
+    if (ext == "nsp") {
+        nstool::PfsProcess pfs;
+        pfs.setInputFile(stream);
+        pfs.setCliOutputMode(nstool::CliOutputMode(false, false, false, false));
+        pfs.process();
+        return pfs.getFileSystem();
+    }
+
+    if (ext == "xci") {
+        nstool::GameCardProcess gameCard;
+        gameCard.setInputFile(stream);
+        gameCard.setKeyCfg(keys);
+        gameCard.setVerifyMode(false);
+        gameCard.setCliOutputMode(nstool::CliOutputMode(false, false, false, false));
+        gameCard.process();
+        return gameCard.getFileSystem();
+    }
+
+    throw tc::Exception("Unsupported container. Select an NSP or XCI file");
+}
+
+void collectPathsByExtension(
+        const std::shared_ptr<tc::io::IFileSystem>& fs,
+        const std::string& directory,
+        const std::string& extension,
+        std::vector<std::string>& out,
+        int depth = 0) {
+    if (!fs || depth > 32) return;
+
+    tc::io::sDirectoryListing listing;
+    fs->getDirectoryListing(tc::io::Path(directory), listing);
+
+    for (const auto& name : listing.file_list) {
+        if (hasExtension(name, extension)) {
+            out.push_back(joinPhysical(directory, name));
+        }
+    }
+
+    for (const auto& dir : listing.dir_list) {
+        collectPathsByExtension(fs, joinPhysical(directory, dir), extension, out, depth + 1);
+    }
+}
+
+std::vector<std::string> listNcas(const std::shared_ptr<tc::io::IFileSystem>& fs) {
+    std::vector<std::string> result;
+    collectPathsByExtension(fs, "/", "nca", result);
+    std::sort(result.begin(), result.end());
+    return result;
 }
 
 void importTickets(const std::shared_ptr<tc::io::IFileSystem>& fs, nstool::KeyBag& keys) {
     if (!fs) return;
-    tc::io::sDirectoryListing listing;
-    fs->getDirectoryListing(tc::io::Path("/"), listing);
-    for (const auto& name : listing.file_list) {
-        if (name.size() < 4 || name.substr(name.size() - 4) != ".tik") continue;
+
+    std::vector<std::string> tickets;
+    collectPathsByExtension(fs, "/", "tik", tickets);
+
+    for (const auto& path : tickets) {
         try {
             std::shared_ptr<tc::io::IStream> stream;
-            fs->openFile(tc::io::Path("/" + name), tc::io::FileMode::Open, tc::io::FileAccess::Read, stream);
+            fs->openFile(tc::io::Path(path), tc::io::FileMode::Open, tc::io::FileAccess::Read, stream);
             nstool::EsTikProcess tik;
             tik.setInputFile(stream);
             tik.setKeyCfg(keys);
             tik.setCliOutputMode(nstool::CliOutputMode(false, false, false, false));
             tik.process();
+
             const auto& body = tik.getTicket().getBody();
             nstool::KeyBag::rights_id_t rightsId;
             std::memcpy(rightsId.data(), body.getRightsId(), 16);
@@ -129,19 +202,55 @@ void importTickets(const std::shared_ptr<tc::io::IFileSystem>& fs, nstool::KeyBa
             std::memcpy(titleKey.data(), body.getEncTitleKey(), 16);
             keys.external_enc_content_keys[rightsId] = titleKey;
         } catch (const std::exception& e) {
-            RXI("Skipping ticket %s: %s", name.c_str(), e.what());
+            RXI("Skipping ticket %s: %s", path.c_str(), e.what());
+        } catch (...) {
+            RXI("Skipping unusable ticket %s", path.c_str());
         }
     }
 }
 
-std::vector<std::string> listNcas(const std::shared_ptr<tc::io::IFileSystem>& fs) {
-    std::vector<std::string> result;
+void collectFilesRecursive(
+        const std::shared_ptr<tc::io::IFileSystem>& fs,
+        const std::string& physicalDir,
+        std::vector<std::string>& out,
+        size_t limit,
+        int depth = 0) {
+    if (!fs || depth > 96 || out.size() >= limit) return;
+
     tc::io::sDirectoryListing listing;
-    fs->getDirectoryListing(tc::io::Path("/"), listing);
-    for (const auto& name : listing.file_list) {
-        if (name.size() >= 4 && name.substr(name.size() - 4) == ".nca") result.push_back("/" + name);
+    fs->getDirectoryListing(tc::io::Path(physicalDir), listing);
+
+    for (const auto& file : listing.file_list) {
+        if (out.size() >= limit) break;
+        out.push_back(file);
     }
-    return result;
+
+    for (const auto& dir : listing.dir_list) {
+        if (out.size() >= limit) break;
+        collectFilesRecursive(fs, joinPhysical(physicalDir, dir), out, limit, depth + 1);
+    }
+}
+
+bool fileSystemHasFiles(const std::shared_ptr<tc::io::IFileSystem>& fs) {
+    if (!fs) return false;
+    constexpr size_t kProbeLimit = 1;
+    for (int i = 0; i < 8; i++) {
+        std::vector<std::string> probe;
+        try {
+            collectFilesRecursive(fs, "/" + std::to_string(i), probe, kProbeLimit);
+        } catch (...) {
+            probe.clear();
+        }
+        if (!probe.empty()) return true;
+    }
+
+    std::vector<std::string> rootProbe;
+    try {
+        collectFilesRecursive(fs, "/", rootProbe, kProbeLimit);
+    } catch (...) {
+        rootProbe.clear();
+    }
+    return !rootProbe.empty();
 }
 
 struct ProgramNcaInfo {
@@ -149,24 +258,43 @@ struct ProgramNcaInfo {
     uint64_t programId = 0;
 };
 
-ProgramNcaInfo findBaseProgramNca(const std::shared_ptr<tc::io::IFileSystem>& fs,
-                                  const nstool::KeyBag& keys) {
+ProgramNcaInfo findBaseProgramNca(
+        const std::shared_ptr<tc::io::IFileSystem>& fs,
+        const nstool::KeyBag& keys) {
+    std::string lastError;
+
     for (const auto& path : listNcas(fs)) {
         try {
             std::shared_ptr<tc::io::IStream> stream;
             fs->openFile(tc::io::Path(path), tc::io::FileMode::Open, tc::io::FileAccess::Read, stream);
+
             nstool::NcaProcess nca;
             nca.setInputFile(stream);
             nca.setKeyCfg(keys);
             nca.setVerifyMode(false);
             nca.setCliOutputMode(nstool::CliOutputMode(false, false, false, false));
             nca.process();
+
             const auto& header = nca.getHeader();
-            if (header.getContentType() == pie::hac::nca::ContentType_Program) {
-                stream->seek(0, tc::io::SeekOrigin::Begin);
-                return {stream, header.getProgramId()};
+            if (header.getContentType() != pie::hac::nca::ContentType_Program) continue;
+
+            if (!fileSystemHasFiles(nca.getFileSystem())) {
+                const auto diagnostic = nca.getPartitionFailureSummary();
+                if (!diagnostic.empty()) lastError = diagnostic;
+                continue;
             }
-        } catch (...) {}
+
+            stream->seek(0, tc::io::SeekOrigin::Begin);
+            return {stream, header.getProgramId()};
+        } catch (const std::exception& e) {
+            lastError = e.what();
+        } catch (...) {
+            lastError = "unknown native error";
+        }
+    }
+
+    if (!lastError.empty()) {
+        throw tc::Exception("Could not open the base Program RomFS: " + lastError);
     }
     return {};
 }
@@ -176,28 +304,38 @@ std::string normalizeRomFsPath(std::string path) {
     while (!path.empty() && std::isspace(static_cast<unsigned char>(path.front()))) path.erase(path.begin());
     while (!path.empty() && std::isspace(static_cast<unsigned char>(path.back()))) path.pop_back();
     while (!path.empty() && path.front() == '/') path.erase(path.begin());
+
     const std::string prefix = "romfs/";
     if (path.rfind(prefix, 0) == 0) path.erase(0, prefix.size());
+
     if (path.empty()) throw tc::Exception("RomFS path is empty");
-    if (path.find("..") != std::string::npos) throw tc::Exception("Parent path segments (..) are not allowed");
+    if (path.find("..") != std::string::npos) {
+        throw tc::Exception("Parent path segments (..) are not allowed");
+    }
     return path;
 }
 
-bool openRequestedFile(const std::shared_ptr<tc::io::IFileSystem>& fs,
-                       const std::string& requestedPath,
-                       std::shared_ptr<tc::io::IStream>& target,
-                       std::string& foundPath) {
+bool openRequestedFile(
+        const std::shared_ptr<tc::io::IFileSystem>& fs,
+        const std::string& requestedPath,
+        std::shared_ptr<tc::io::IStream>& target,
+        std::string& foundPath) {
     if (!fs) return false;
+
     const std::string normalized = normalizeRomFsPath(requestedPath);
     std::vector<std::string> candidates;
     candidates.push_back("/" + normalized);
-    for (int i = 0; i < 8; i++) candidates.push_back("/" + std::to_string(i) + "/" + normalized);
+    for (int i = 0; i < 8; i++) {
+        candidates.push_back("/" + std::to_string(i) + "/" + normalized);
+    }
+
     for (const auto& path : candidates) {
         try {
             fs->openFile(tc::io::Path(path), tc::io::FileMode::Open, tc::io::FileAccess::Read, target);
             foundPath = path;
             return true;
-        } catch (...) {}
+        } catch (...) {
+        }
     }
     return false;
 }
@@ -205,13 +343,18 @@ bool openRequestedFile(const std::shared_ptr<tc::io::IFileSystem>& fs,
 int64_t copyToFd(const std::shared_ptr<tc::io::IStream>& input, int outputFd) {
     if (!input || outputFd < 0) throw tc::io::IOException("Invalid input/output stream");
     if (ftruncate(outputFd, 0) != 0) throw tc::io::IOException("Could not truncate output");
-    if (lseek64(outputFd, 0, SEEK_SET) == (off64_t)-1) throw tc::io::IOException("Could not seek output");
+    if (lseek64(outputFd, 0, SEEK_SET) == (off64_t)-1) {
+        throw tc::io::IOException("Could not seek output");
+    }
+
     input->seek(0, tc::io::SeekOrigin::Begin);
+
     std::vector<byte_t> buffer(1024 * 1024);
     int64_t total = 0;
     while (true) {
         size_t got = input->read(buffer.data(), buffer.size());
         if (got == 0) break;
+
         size_t offset = 0;
         while (offset < got) {
             ssize_t wrote = ::write(outputFd, buffer.data() + offset, got - offset);
@@ -220,42 +363,57 @@ int64_t copyToFd(const std::shared_ptr<tc::io::IStream>& input, int outputFd) {
         }
         total += static_cast<int64_t>(got);
     }
+
     fsync(outputFd);
     return total;
 }
 
-int64_t extractFromBase(const ProgramNcaInfo& baseProgram,
-                        const nstool::KeyBag& keys,
-                        const std::string& requestedPath,
-                        int outputFd,
-                        std::string& foundPath) {
+int64_t extractFromBase(
+        const ProgramNcaInfo& baseProgram,
+        const nstool::KeyBag& keys,
+        const std::string& requestedPath,
+        int outputFd,
+        std::string& foundPath) {
     baseProgram.stream->seek(0, tc::io::SeekOrigin::Begin);
+
     nstool::NcaProcess nca;
     nca.setInputFile(baseProgram.stream);
     nca.setKeyCfg(keys);
     nca.setVerifyMode(false);
     nca.setCliOutputMode(nstool::CliOutputMode(false, false, false, false));
     nca.process();
+
     std::shared_ptr<tc::io::IStream> target;
     if (!openRequestedFile(nca.getFileSystem(), requestedPath, target, foundPath)) {
+        const auto diagnostic = nca.getPartitionFailureSummary();
+        if (!diagnostic.empty()) {
+            throw tc::Exception("Could not read the base RomFS: " + diagnostic);
+        }
         throw tc::Exception("Requested file was not found in the base RomFS");
     }
+
     return copyToFd(target, outputFd);
 }
 
-int64_t extractFromUpdated(const ProgramNcaInfo& baseProgram,
-                           const std::shared_ptr<tc::io::IFileSystem>& updateFs,
-                           const nstool::KeyBag& keys,
-                           const std::string& requestedPath,
-                           int outputFd,
-                           std::string& foundPath) {
+int64_t extractFromUpdated(
+        const ProgramNcaInfo& baseProgram,
+        const std::shared_ptr<tc::io::IFileSystem>& updateFs,
+        const nstool::KeyBag& keys,
+        const std::string& requestedPath,
+        int outputFd,
+        std::string& foundPath) {
     std::string lastError;
     bool sawProgramCandidate = false;
 
     for (const auto& path : listNcas(updateFs)) {
         try {
             std::shared_ptr<tc::io::IStream> updateNcaStream;
-            updateFs->openFile(tc::io::Path(path), tc::io::FileMode::Open, tc::io::FileAccess::Read, updateNcaStream);
+            updateFs->openFile(
+                tc::io::Path(path),
+                tc::io::FileMode::Open,
+                tc::io::FileAccess::Read,
+                updateNcaStream);
+
             baseProgram.stream->seek(0, tc::io::SeekOrigin::Begin);
 
             nstool::NcaProcess nca;
@@ -269,13 +427,15 @@ int64_t extractFromUpdated(const ProgramNcaInfo& baseProgram,
             const auto& header = nca.getHeader();
             if (header.getContentType() != pie::hac::nca::ContentType_Program) continue;
 
-            // Do not require the update Program ID to equal the base Program ID.
-            // Valid update Program NCAs may use an update-specific ID. Successful
-            // reconstruction with the base stream is the authoritative compatibility check.
             sawProgramCandidate = true;
+
             std::shared_ptr<tc::io::IStream> target;
-            if (!openRequestedFile(nca.getFileSystem(), requestedPath, target, foundPath)) continue;
-            return copyToFd(target, outputFd);
+            if (openRequestedFile(nca.getFileSystem(), requestedPath, target, foundPath)) {
+                return copyToFd(target, outputFd);
+            }
+
+            const auto diagnostic = nca.getPartitionFailureSummary();
+            if (!diagnostic.empty()) lastError = diagnostic;
         } catch (const std::exception& e) {
             lastError = e.what();
         } catch (...) {
@@ -283,21 +443,13 @@ int64_t extractFromUpdated(const ProgramNcaInfo& baseProgram,
         }
     }
 
-    if (sawProgramCandidate) {
-        throw tc::Exception("The updated RomFS opened, but the requested file was not found");
-    }
     if (!lastError.empty()) {
         throw tc::Exception("Could not reconstruct the updated RomFS: " + lastError);
     }
-    throw tc::Exception("Could not find a usable updated Program NCA. Check that the base and update packages belong together and are selected in the correct order");
-}
-
-bool isNsp(const std::string& name) {
-    auto p = name.find_last_of('.');
-    if (p == std::string::npos) return false;
-    std::string ext = name.substr(p + 1);
-    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return ext == "nsp";
+    if (sawProgramCandidate) {
+        throw tc::Exception("Updated RomFS opened, but the requested file was not found");
+    }
+    throw tc::Exception("Could not find a usable updated Program NCA");
 }
 
 } // namespace
@@ -320,8 +472,12 @@ Java_io_github_dmousouroulis_nxromfsextractor_RomFsExtractorActivity_extractRomF
 
     try {
         if (keyPath.empty()) throw tc::Exception("prod.keys path is empty");
-        if (!isNsp(baseName)) throw tc::Exception("This build currently supports NSP base packages only");
-        if (updateFd >= 0 && !isNsp(updateName)) throw tc::Exception("This build currently supports NSP update packages only");
+        if (!isSupportedContainer(baseName)) {
+            throw tc::Exception("Base package must be an NSP or XCI file");
+        }
+        if (updateFd >= 0 && !isSupportedContainer(updateName)) {
+            throw tc::Exception("Update package must be an NSP or XCI file");
+        }
         normalizeRomFsPath(requestedPath);
 
         nstool::KeyBag keys = nstool::KeyBagInitializer(
@@ -332,23 +488,39 @@ Java_io_github_dmousouroulis_nxromfsextractor_RomFsExtractorActivity_extractRomF
             tc::Optional<tc::io::Path>());
 
         auto baseRoot = std::make_shared<AndroidFdStream>(baseFd);
-        auto baseFs = openNsp(baseRoot);
+        auto baseFs = openContainer(baseRoot, baseName, keys);
         importTickets(baseFs, keys);
+
         auto baseProgram = findBaseProgramNca(baseFs, keys);
-        if (!baseProgram.stream) throw tc::Exception("Could not find a Program NCA in the base package");
+        if (!baseProgram.stream) {
+            throw tc::Exception("Could not find a readable Program RomFS in the base package");
+        }
 
         std::string foundPath;
         int64_t bytes = 0;
+
         if (updateFd >= 0) {
             auto updateRoot = std::make_shared<AndroidFdStream>(updateFd);
-            auto updateFs = openNsp(updateRoot);
+            auto updateFs = openContainer(updateRoot, updateName, keys);
             importTickets(updateFs, keys);
-            bytes = extractFromUpdated(baseProgram, updateFs, keys, requestedPath, outputFd, foundPath);
+            bytes = extractFromUpdated(
+                baseProgram,
+                updateFs,
+                keys,
+                requestedPath,
+                outputFd,
+                foundPath);
         } else {
-            bytes = extractFromBase(baseProgram, keys, requestedPath, outputFd, foundPath);
+            bytes = extractFromBase(
+                baseProgram,
+                keys,
+                requestedPath,
+                outputFd,
+                foundPath);
         }
 
-        const std::string ok = "OK|" + foundPath + "|" + std::to_string(bytes) + "|" + toUpperHex(baseProgram.programId);
+        const std::string ok =
+            "OK|" + foundPath + "|" + std::to_string(bytes) + "|" + toUpperHex(baseProgram.programId);
         return env->NewStringUTF(ok.c_str());
     } catch (const tc::Exception& e) {
         std::string msg = std::string("ERROR|") + e.error();

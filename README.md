@@ -10,8 +10,8 @@ Everything runs locally. The app does not upload selected packages, keys, or ext
 
 ## What it does
 
-- opens a base NSP directly from Android storage or an SD card;
-- optionally opens an update NSP;
+- opens a base NSP or XCI directly from Android storage or an SD card;
+- optionally opens a matching update NSP or XCI;
 - uses a local `prod.keys` file;
 - reconstructs the updated Program NCA in place when an update is selected;
 - builds a browsable RomFS file tree without dumping the full RomFS;
@@ -20,8 +20,8 @@ Everything runs locally. The app does not upload selected packages, keys, or ext
 
 ## Basic workflow
 
-1. **Select base package** — choose the base NSP.
-2. **Select update package (optional)** — choose an update NSP if you want the reconstructed updated RomFS.
+1. **Select base package** — choose the original/base NSP or XCI.
+2. **Select update package (optional)** — choose a matching update NSP or XCI if you want the reconstructed updated RomFS.
 3. **Select `prod.keys`** — the file is stored privately inside the app for later use.
 4. **Choose the source file inside RomFS** — tap **Browse RomFS**, navigate the internal folders, and select the file you want. For example, a path can look like:
 
@@ -29,25 +29,28 @@ Everything runs locally. The app does not upload selected packages, keys, or ext
    content/content0/bundles/xml.bundle
    ```
 
-5. **Choose output folder** — select an Android folder such as **Internal storage → Download**. The app remembers the folder permission while Android keeps it available.
+5. **Choose output folder** — select any writable Android subfolder in internal storage or on an SD card. Android may block protected folders or a storage root itself. The app remembers the folder permission while Android keeps it available.
 6. **Extract file** — the selected source file is written directly to that output folder under its original filename.
 
 Step 4 selects the **source file inside RomFS**. Step 5 selects the **destination folder on Android**.
 
 ## Current support
 
-### v0.1.0
+### v0.1.2 candidate
 
-- Base package: NSP
-- Optional update package: NSP
+- Base package: NSP or XCI
+- Optional update package: NSP or XCI
 - Android Storage Access Framework file and folder selection
 - RomFS folder browser
 - In-place base + update reconstruction
 - Single-file extraction
 - Persistent Android output-folder selection
 - On-device `prod.keys` handling
+- Native partition diagnostics for failed RomFS reconstruction
 
-Planned improvements include additional container support, search/filtering inside large RomFS trees, and multi-file extraction.
+The v0.1.2 candidate is being device-tested before release.
+
+Planned improvements include search/filtering inside large RomFS trees and multi-file extraction.
 
 ## Build
 

@@ -1,14 +1,21 @@
 # Changelog
 
+## 0.1.2
+
+- Fixed the Android bridge so the reconstructed NCA filesystem is retained and can actually be browsed.
+- Added NSP and XCI container support for base and optional update packages.
+- Added recursive container scanning for NCA and ticket files.
+- Added partition-level reconstruction diagnostics.
+- Added base/update Program ID compatibility handling for update-offset IDs.
+- Updated package-selection labels and guidance for NSP/XCI.
+- Kept output-folder selection on writable Android subfolders rather than defaulting to Download.
+
 ## 0.1.1
 
-- Fixed update-package RomFS reconstruction when the update Program NCA uses a different Program ID from the base package.
-- Applied the same fix to extraction from reconstructed updated RomFS content.
-- Added clearer base/update package guidance and filename-version warnings.
-- Added automatic swap guidance when filenames strongly suggest the base and update were selected in reverse.
-- Added visible RomFS reconstruction progress and clearer error dialogs.
-- Output-folder browsing now starts from internal storage instead of Download.
-- Clarified that users should choose a writable subfolder because Android may restrict protected folders and storage roots.
+- Clarified base vs update package selection.
+- Added version-marker warnings and a swap prompt for obviously reversed selections.
+- Added visible RomFS reconstruction progress and clearer browse errors.
+- Changed output-folder selection to start at internal storage instead of Download.
 
 ## 0.1.0
 
