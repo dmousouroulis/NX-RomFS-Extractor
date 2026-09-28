@@ -12,6 +12,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -43,9 +44,11 @@ class RomFsExtractorActivity : AppCompatActivity() {
         uri?.let {
             persistReadPermission(it)
             baseUri = it
-            baseStatus.text = "Base package: ${displayName(it)}"
+            val name = displayName(it)
+            baseStatus.text = "Base package: $name"
             invalidateRomFsSelection()
             updateControlState()
+            warnIfVersionLooksWrong(name, selectingBase = true)
         }
     }
 
@@ -53,9 +56,11 @@ class RomFsExtractorActivity : AppCompatActivity() {
         uri?.let {
             persistReadPermission(it)
             updateUri = it
-            updateStatus.text = "Update package: ${displayName(it)}"
+            val name = displayName(it)
+            updateStatus.text = "Update package: $name"
             invalidateRomFsSelection()
             updateControlState()
+            warnIfVersionLooksWrong(name, selectingBase = false)
         }
     }
 
@@ -123,19 +128,49 @@ class RomFsExtractorActivity : AppCompatActivity() {
         })
 
         content.addView(Button(this).apply {
-            text = "1. Select base NSP"
-            setOnClickListener { basePicker.launch(arrayOf("*/*")) }
+            text = "1. Select BASE NSP"
+            setOnClickListener {
+                Toast.makeText(
+                    this@RomFsExtractorActivity,
+                    "Select the BASE package (usually the original / v0 NSP).",
+                    Toast.LENGTH_LONG
+                ).show()
+                basePicker.launch(arrayOf("*/*"))
+            }
         }, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+
+        content.addView(TextView(this).apply {
+            text = "Choose the original/base package here. If the filename includes a version marker, this is usually v0."
+            textSize = 13f
+            alpha = 0.75f
+            setPadding(0, dp(5), 0, dp(4))
+        })
+
         baseStatus = TextView(this).apply {
             text = "Base package: not selected"
-            setPadding(0, dp(4), 0, dp(14))
+            setPadding(0, 0, 0, dp(14))
+            setTextIsSelectable(true)
         }
         content.addView(baseStatus)
 
         content.addView(Button(this).apply {
-            text = "2. Select update NSP (optional)"
-            setOnClickListener { updatePicker.launch(arrayOf("*/*")) }
+            text = "2. Select UPDATE NSP (optional)"
+            setOnClickListener {
+                Toast.makeText(
+                    this@RomFsExtractorActivity,
+                    "Select the UPDATE package here (normally a version newer than v0).",
+                    Toast.LENGTH_LONG
+                ).show()
+                updatePicker.launch(arrayOf("*/*"))
+            }
         }, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+
+        content.addView(TextView(this).apply {
+            text = "Optional. Choose the update package that belongs to the selected base package."
+            textSize = 13f
+            alpha = 0.75f
+            setPadding(0, dp(5), 0, dp(4))
+        })
 
         content.addView(Button(this).apply {
             text = "Clear selected update"
@@ -150,6 +185,7 @@ class RomFsExtractorActivity : AppCompatActivity() {
         updateStatus = TextView(this).apply {
             text = "Update package: none (base RomFS only)"
             setPadding(0, dp(4), 0, dp(14))
+            setTextIsSelectable(true)
         }
         content.addView(updateStatus)
 
@@ -157,6 +193,7 @@ class RomFsExtractorActivity : AppCompatActivity() {
             text = "3. Select prod.keys"
             setOnClickListener { keysPicker.launch(arrayOf("*/*")) }
         }, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+
         keysStatus = TextView(this).apply {
             text = "prod.keys: not loaded"
             setPadding(0, dp(4), 0, dp(18))
@@ -171,7 +208,7 @@ class RomFsExtractorActivity : AppCompatActivity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Browse the internal folders until you reach the file you want to extract. Example: content/content0/bundles/xml.bundle"
+            text = "Browse the reconstructed internal folders until you reach the file you want to extract. Example path: content/content0/bundles/xml.bundle"
             textSize = 13f
             alpha = 0.75f
             setPadding(0, 0, 0, dp(8))
@@ -183,9 +220,29 @@ class RomFsExtractorActivity : AppCompatActivity() {
         }
         content.addView(browseButton, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
+        progress = ProgressBar(this).apply {
+            isIndeterminate = true
+            visibility = View.GONE
+        }
+        content.addView(progress, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            topMargin = dp(10)
+        })
+
+        resultStatus = TextView(this).apply {
+            text = "Ready."
+            textSize = 14f
+            setPadding(0, dp(8), 0, dp(8))
+            setTextIsSelectable(true)
+        }
+        content.addView(resultStatus)
+
         selectedFileStatus = TextView(this).apply {
             text = "Source file: none"
-            setPadding(0, dp(6), 0, dp(18))
+            setPadding(0, dp(4), 0, dp(18))
             setTextIsSelectable(true)
         }
         content.addView(selectedFileStatus)
@@ -198,7 +255,7 @@ class RomFsExtractorActivity : AppCompatActivity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Choose an Android destination folder such as Internal storage → Download."
+            text = "Choose any writable subfolder in internal storage or on an SD card. Android may block protected folders or a storage root itself."
             textSize = 13f
             alpha = 0.75f
             setPadding(0, 0, 0, dp(8))
@@ -206,7 +263,7 @@ class RomFsExtractorActivity : AppCompatActivity() {
 
         outputFolderButton = Button(this).apply {
             text = "Choose output folder"
-            setOnClickListener { outputFolderPicker.launch(downloadsInitialUri()) }
+            setOnClickListener { outputFolderPicker.launch(internalStorageInitialUri()) }
         }
         content.addView(outputFolderButton, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
@@ -223,25 +280,8 @@ class RomFsExtractorActivity : AppCompatActivity() {
         }
         content.addView(extractButton, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
-        progress = ProgressBar(this).apply {
-            isIndeterminate = true
-            visibility = View.GONE
-        }
-        content.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-            topMargin = dp(16)
-        })
-
-        resultStatus = TextView(this).apply {
-            text = "Ready."
-            textSize = 14f
-            setPadding(0, dp(16), 0, 0)
-            setTextIsSelectable(true)
-        }
-        content.addView(resultStatus)
-
         content.addView(TextView(this).apply {
-            text = "Step 4 selects the source file inside RomFS. Step 5 selects the destination folder on Android. All processing is local to this device."
+            text = "Step 4 selects the source file inside RomFS. Step 5 selects where the extracted copy will be saved on Android. All processing is local to this device."
             textSize = 13f
             alpha = 0.75f
             setPadding(0, dp(24), 0, 0)
@@ -285,9 +325,64 @@ class RomFsExtractorActivity : AppCompatActivity() {
         }
     }
 
+    private fun versionFromName(name: String): Long? {
+        val match = Regex("\\[v(\\d+)]", RegexOption.IGNORE_CASE).find(name) ?: return null
+        return match.groupValues.getOrNull(1)?.toLongOrNull()
+    }
+
+    private fun warnIfVersionLooksWrong(name: String, selectingBase: Boolean) {
+        val version = versionFromName(name) ?: return
+        val looksWrong = if (selectingBase) version > 0 else version == 0L
+        if (!looksWrong) return
+
+        val message = if (selectingBase) {
+            "This filename contains [v$version], so it looks more like an update package. The base package is usually v0. You can keep it if you know this is correct."
+        } else {
+            "This filename contains [v0], so it looks more like a base package than an update. You can keep it if you know this is correct."
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Check package selection")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun packagesLookReversed(): Boolean {
+        val base = baseUri ?: return false
+        val update = updateUri ?: return false
+        val baseVersion = versionFromName(displayName(base)) ?: return false
+        val updateVersion = versionFromName(displayName(update)) ?: return false
+        return baseVersion > 0 && updateVersion == 0L
+    }
+
+    private fun swapPackages() {
+        val oldBase = baseUri
+        baseUri = updateUri
+        updateUri = oldBase
+        baseStatus.text = "Base package: ${baseUri?.let { displayName(it) } ?: "not selected"}"
+        updateStatus.text = updateUri?.let { "Update package: ${displayName(it)}" }
+            ?: "Update package: none (base RomFS only)"
+        invalidateRomFsSelection()
+        updateControlState()
+    }
+
     private fun browseRomFs() {
         if (cachedRomFsFiles.isNotEmpty()) {
             showRomFsBrowser(cachedRomFsFiles, "")
+            return
+        }
+
+        if (packagesLookReversed()) {
+            AlertDialog.Builder(this)
+                .setTitle("Packages may be reversed")
+                .setMessage("The selected base filename looks versioned while the selected update filename is v0. Swap them before reconstructing RomFS?")
+                .setPositiveButton("Swap and continue") { _, _ ->
+                    swapPackages()
+                    browseRomFs()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
             return
         }
 
@@ -295,17 +390,18 @@ class RomFsExtractorActivity : AppCompatActivity() {
         val update = updateUri
         val keysPath = ProdKeysManager.getInstance(this).getKeysFilePath()
         if (keysPath.isNullOrBlank()) {
-            resultStatus.text = "Error: prod.keys is not loaded."
+            showBrowseError("prod.keys is not loaded.")
             return
         }
 
         progress.visibility = View.VISIBLE
+        browseButton.text = "Reading RomFS…"
         browseButton.isEnabled = false
         extractButton.isEnabled = false
         resultStatus.text = if (update == null) {
-            "Reading base RomFS…"
+            "Reading base RomFS… This can take a little while for large packages."
         } else {
-            "Reconstructing updated RomFS and reading its files…"
+            "Reconstructing updated RomFS… This can take a little while for large packages."
         }
 
         lifecycleScope.launch {
@@ -338,17 +434,30 @@ class RomFsExtractorActivity : AppCompatActivity() {
             }
 
             progress.visibility = View.GONE
+            browseButton.text = "Browse RomFS"
             updateControlState()
 
             if (result.startsWith("OK|")) {
                 val lines = result.lineSequence().toList()
                 cachedRomFsFiles = lines.drop(1).filter { it.isNotBlank() }
-                resultStatus.text = "RomFS ready: ${cachedRomFsFiles.size} files\nBrowse to the source file you want to extract."
+                resultStatus.text = "RomFS ready: ${cachedRomFsFiles.size} files. Choose the source file you want to extract."
                 showRomFsBrowser(cachedRomFsFiles, "")
             } else {
-                resultStatus.text = "Could not browse RomFS:\n${result.removePrefix("ERROR|")}"
+                val error = result.removePrefix("ERROR|")
+                resultStatus.text = "Could not browse RomFS: $error"
+                showBrowseError(error)
             }
         }
+    }
+
+    private fun showBrowseError(error: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Could not browse RomFS")
+            .setMessage(
+                "$error\n\nCheck that the base package and optional update package belong together, that they are selected in the correct order, and that prod.keys is compatible with the packages."
+            )
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun showRomFsBrowser(files: List<String>, directory: String) {
@@ -511,8 +620,8 @@ class RomFsExtractorActivity : AppCompatActivity() {
         )
     }
 
-    private fun downloadsInitialUri(): Uri {
-        return Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload")
+    private fun internalStorageInitialUri(): Uri {
+        return Uri.parse("content://com.android.externalstorage.documents/document/primary%3A")
     }
 
     private fun folderLabel(uri: Uri): String {
