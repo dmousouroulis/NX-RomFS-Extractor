@@ -17,7 +17,8 @@
 - Added post-write ZIP validation to confirm the generated archive can be reopened and contains the expected reconstructed entry.
 - Added clear success details showing the Android save location and packaged target, plus surfaced errors when ZIP creation fails.
 - Added explicit guidance that NX RomFS Extractor creates the package but does not install, enable, or configure it in third-party software.
-- Added backup guidance for the original or previously working file before external modification.
+- Added prominent backup and external-editing guidance to the README.
+- Documented the complete extract → back up → modify externally → package → install/enable workflow while keeping file formats and RomFS paths generic.
 - Set Android app version to 0.1.2 / versionCode 3.
 
 ## 0.1.1
