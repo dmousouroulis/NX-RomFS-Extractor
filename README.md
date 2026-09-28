@@ -6,7 +6,7 @@
 
 NX RomFS Extractor is an Android utility for browsing reconstructed RomFS contents, extracting individual files, and packaging a modified replacement back into its remembered RomFS location.
 
-Everything runs locally on the device. The app does not include network permissions or upload selected inputs, extracted files, or generated ZIPs.
+Everything runs locally on the device. The app does not include network permissions or upload selected inputs, extracted files, or generated ZIPs. Users are responsible for the files they provide and for any modifications they make.
 
 ## End-to-end workflow
 
