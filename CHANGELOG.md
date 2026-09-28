@@ -9,6 +9,12 @@
 - Added base/update Program ID compatibility handling for update-offset IDs.
 - Updated package-selection labels and guidance for NSP/XCI.
 - Kept output-folder selection on writable Android subfolders rather than defaulting to Download.
+- Retain the selected file's original relative RomFS path for the rest of the workflow.
+- Added optional **Export Override Package** support after external editing.
+- Override ZIPs can use either `romfs/[original path]` or `Mods/romfs/[original path]`.
+- Modified replacement files are restored to the original filename inside the generated package.
+- Added explicit help text that exported packages are not automatically installed or enabled in other software and that users should keep backups of working files.
+- Set the Android app version to 0.1.2 / versionCode 3 for clean on-device upgrade testing.
 
 ## 0.1.1
 
